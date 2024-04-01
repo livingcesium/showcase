@@ -1,7 +1,8 @@
 import './App.css';
+import React, { useState, useEffect } from 'react';
 import { Route, Routes} from 'react-router-dom';
 import Navbar from './components/Nav';
-import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import FlexWrap from './components/Styling';
 
 
@@ -20,9 +21,9 @@ function App() {
 
 function Home() {
   return (
-    <div className="main">
-      home
-    </div>
+    <CardProvider>
+      <CardSpace />
+    </CardProvider>
   );
 }
 
@@ -72,33 +73,50 @@ const getListStyle = isDraggingOver => ({
   width: 250
 });
 
-function Workspace() {
-  const [columns, setColumns] = useState([getItems(10), getItems(5, 10)]);
-  function onDragEnd(result) {
-    const { source, destination } = result;
+// fake data generator
+const getItems = (count, offset = 0) =>
+  Array.from({ length: count }, (v, k) => k).map(k => ({
+    id: `item-${k + offset}-${new Date().getTime()}`,
+    content: `item ${k + offset}`
+  }));
 
-    // dropped outside the list
-    if (!destination) {
-      return;
-    }
-    const srcId = +source.droppableId;
-    const destId = +destination.droppableId;
+const CardContext = React.createContext();
+function CardProvider({children}) {
+  const [columns, setColumns] = useState([getItems(10), getItems(5, 10)]); // 2D space of cards (List of card lists)
 
-    if (srcId === destId) {
-      const items = reorder(columns[srcId], source.index, destination.index);
-      const newColumns = [...columns];
-      newColumns[srcId] = items;
-      setColumns(newColumns);
-    } else {
-      const result = move(columns[srcId], columns[destId], source, destination);
-      const newColumns = [...columns];
-      newColumns[srcId] = result[srcId];
-      newColumns[destId] = result[destId];
+  return (
+    <CardContext.Provider value={{columns, setColumns}}>
+      {children}
+    </CardContext.Provider>
+  )
+}
 
-      setColumns(newColumns.filter(group => group.length));
-    }
+function CardSpace() {
+  const {columns, setColumns} = React.useContext(CardContext); // 2D space of cards (List of card lists)
+  const localSwap = ({src, srcRow}, dest) => {
+    const items = reorder(columns[srcRow], src.Row, dest.Row);
+    const newColumns = [...columns];
+    newColumns[srcRow] = items;
+    setColumns(newColumns);
   }
+  const transfer = ({src, srcRow}, { dest, destRow }) => {
+    const result = move(columns[srcRow], columns[destRow], src, dest);
+    const newColumns = [...columns];
+    newColumns[srcRow] = result[srcRow];
+    newColumns[destRow] = result[destRow];
 
+    setColumns(newColumns.filter(group => group.length));
+  }
+  const remove = (colIndex, index) => {
+    const newColumns = [...columns];
+    newColumns[colIndex].splice(index, 1);
+    setColumns(
+      newColumns.filter(group => group.length)
+    );
+  }
+  const refresh = () => {
+    setColumns([...columns]);
+  }
 
   return (
     <div>
@@ -120,69 +138,121 @@ function Workspace() {
       </button>
 
       <FlexWrap>
-        <DragDropContext onDragEnd={onDragEnd}>
-          {state.map((el, ind) => (
-            <Droppable key={ind} droppableId={`${ind}`}>
-              {(provided, snapshot) => (
-                <div
-                  ref={provided.innerRef}
-                  style={getListStyle(snapshot.isDraggingOver)}
-                  {...provided.droppableProps}
-                >
-                  {el.map((item, index) => (
-                    <Draggable
-                      key={item.id}
-                      draggableId={item.id}
-                      index={index}
-                    >
-                      {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          style={getItemStyle(
-                            snapshot.isDragging,
-                            provided.draggableProps.style
-                          )}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-around"
-                            }}
-                          >
-                            {item.content}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newState = [...state];
-                                newState[ind].splice(index, 1);
-                                setState(
-                                  newState.filter(group => group.length)
-                                );
-                              }}
-                            >
-                              delete
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </Draggable>
-                  ))}
-                  {provided.placeholder}
-                </div>
-              )}
-            </Droppable>
-          ))}
-        </DragDropContext>
+        <DropZone cardLists={columns} onLocal = {localSwap} onOther = {transfer} cardActions = {{remove}} onReady = {refresh}/>
       </FlexWrap>
     </div>
   );
 
 }
 
-function DropZone(){
+function DropZone({cardLists, onLocal, onOther, onReady, cardActions = {}}){
+
+  useEffect(()=>{
+    onReady()
+  }, [])
+  function onDragEnd(result) {
+    const { source, destination } = result;
+
+    // dropped outside the list
+    if (!destination) {
+      return
+    }
+    console.log(result, source, destination)
+    const srcId = +source.droppableId;
+    const destId = +destination.droppableId;
+
+
+    if (srcId === destId)
+      onLocal({src: source, srcRow: srcId}, destination) 
+    else
+      onOther({src: source, srcRow: srcId}, {dest: destination, destRow: destId})
+  }
+
+  const generateColumns = () => {
+
+    return cardLists.map((cards, ind) => (
+      <Droppable key={ind} droppableId={`${ind}`}>
+        {(provided, snapshot) => (
+          <Column {...provided} {...snapshot} cardActions={cardActions} index={ind} contents={cards}/>
+        )}
+      </Droppable>
+    ))
+  }
+  return (
+    <DragDropContext onDragEnd={onDragEnd} onDragStart={(start) => console.log(start)}>
+      {generateColumns()}
+    </DragDropContext>
+  )
+}
+
+function Column({innerRef, isDraggingOver, droppableProps, index, cardActions, contents, placeholder}){
+  const generateCards = (cards) => {
+    return cards.map((card, ind) => (
+      <Draggable 
+        key={card.id} draggableId={card.id} index={ind}>
+        {(provided, snapshot) => (
+          <Card card={card} {...provided} {...snapshot} colIndex={index} index={ind} actions={cardActions}/>
+        )}
+      </Draggable>
+    ))
+  }
+
   
+  return (
+    <div
+      ref={innerRef}
+      style={getListStyle(isDraggingOver)}
+      {...droppableProps}
+    >
+      {generateCards(contents)}
+      {placeholder}
+    </div>
+  )
+}
+
+function present(action){
+  return typeof action === 'function';
+}
+
+function Card({card, colIndex, index, innerRef, isDragging, draggableProps, dragHandleProps, actions}){
+  
+  const actionElements = [
+    present(actions.remove) ? // if remove is present, add delete button
+      <button
+        type="button"
+        onClick={() => {
+          actions.remove(colIndex, index);
+        }}
+      >
+        delete
+      </button> 
+    : [/* not added if action not present */],
+    // add actions here...
+  ]
+  return (
+    <div
+      ref={innerRef}
+      {...draggableProps}
+      {...dragHandleProps}
+      style={getItemStyle(
+        isDragging,
+        draggableProps.style
+      )}
+    >
+      <FlexWrap 
+      style={{
+        justifyContent: "space-around"
+      }}>
+        {card.content}
+        {actionElements.map((action, ind) => (
+            <div key={ind}>
+              {action}
+            </div>
+          ))
+        }
+      </FlexWrap>
+    </div>
+  )
 }
 
 export default App;
