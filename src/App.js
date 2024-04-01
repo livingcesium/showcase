@@ -1,8 +1,8 @@
 import './App.css';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Route, Routes} from 'react-router-dom';
 import Navbar from './components/Nav';
-import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import FlexWrap from './components/Styling';
 
 
@@ -21,10 +21,9 @@ function App() {
 
 function Home() {
   return (
-    <CardSpace />
-    // <div className="main">
-    //   home
-    // </div>
+    <CardProvider>
+      <CardSpace />
+    </CardProvider>
   );
 }
 
@@ -81,15 +80,26 @@ const getItems = (count, offset = 0) =>
     content: `item ${k + offset}`
   }));
 
-function CardSpace() {
+const CardContext = React.createContext();
+function CardProvider({children}) {
   const [columns, setColumns] = useState([getItems(10), getItems(5, 10)]); // 2D space of cards (List of card lists)
+
+  return (
+    <CardContext.Provider value={{columns, setColumns}}>
+      {children}
+    </CardContext.Provider>
+  )
+}
+
+function CardSpace() {
+  const {columns, setColumns} = React.useContext(CardContext); // 2D space of cards (List of card lists)
   const localSwap = ({src, srcRow}, dest) => {
     const items = reorder(columns[srcRow], src.Row, dest.Row);
     const newColumns = [...columns];
     newColumns[srcRow] = items;
     setColumns(newColumns);
   }
-  const transfer = ({ src, srcRow }, { dest, destRow }) => {
+  const transfer = ({src, srcRow}, { dest, destRow }) => {
     const result = move(columns[srcRow], columns[destRow], src, dest);
     const newColumns = [...columns];
     newColumns[srcRow] = result[srcRow];
@@ -103,6 +113,9 @@ function CardSpace() {
     setColumns(
       newColumns.filter(group => group.length)
     );
+  }
+  const refresh = () => {
+    setColumns([...columns]);
   }
 
   return (
@@ -125,22 +138,26 @@ function CardSpace() {
       </button>
 
       <FlexWrap>
-        <DropZone cardLists={columns} onLocal = {localSwap} onOther = {transfer} cardActions = {{remove}}/>
+        <DropZone cardLists={columns} onLocal = {localSwap} onOther = {transfer} cardActions = {{remove}} onReady = {refresh}/>
       </FlexWrap>
     </div>
   );
 
 }
 
-function DropZone({cardLists, onLocal, onOther, cardActions = {}}){
+function DropZone({cardLists, onLocal, onOther, onReady, cardActions = {}}){
 
+  useEffect(()=>{
+    onReady()
+  }, [])
   function onDragEnd(result) {
     const { source, destination } = result;
 
     // dropped outside the list
     if (!destination) {
-      return;
+      return
     }
+    console.log(result, source, destination)
     const srcId = +source.droppableId;
     const destId = +destination.droppableId;
 
@@ -152,6 +169,7 @@ function DropZone({cardLists, onLocal, onOther, cardActions = {}}){
   }
 
   const generateColumns = () => {
+
     return cardLists.map((cards, ind) => (
       <Droppable key={ind} droppableId={`${ind}`}>
         {(provided, snapshot) => (
@@ -160,15 +178,14 @@ function DropZone({cardLists, onLocal, onOther, cardActions = {}}){
       </Droppable>
     ))
   }
-
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
+    <DragDropContext onDragEnd={onDragEnd} onDragStart={(start) => console.log(start)}>
       {generateColumns()}
     </DragDropContext>
   )
 }
 
-function Column({innerRef, isDraggingOver, droppableProps, index, cardActions, contents}){
+function Column({innerRef, isDraggingOver, droppableProps, index, cardActions, contents, placeholder}){
   const generateCards = (cards) => {
     return cards.map((card, ind) => (
       <Draggable 
@@ -180,6 +197,7 @@ function Column({innerRef, isDraggingOver, droppableProps, index, cardActions, c
     ))
   }
 
+  
   return (
     <div
       ref={innerRef}
@@ -187,25 +205,30 @@ function Column({innerRef, isDraggingOver, droppableProps, index, cardActions, c
       {...droppableProps}
     >
       {generateCards(contents)}
-      {/* {placeholder} */}
+      {placeholder}
     </div>
   )
+}
+
+function present(action){
+  return typeof action === 'function';
 }
 
 function Card({card, colIndex, index, innerRef, isDragging, draggableProps, dragHandleProps, actions}){
   
   const actionElements = [
-    'remove' in actions ? 
+    present(actions.remove) ? // if remove is present, add delete button
       <button
         type="button"
         onClick={() => {
-          cardActions.remove(colIndex, index);
+          actions.remove(colIndex, index);
         }}
       >
         delete
-      </button> : [/* not added if action not present */]
+      </button> 
+    : [/* not added if action not present */],
+    // add actions here...
   ]
-  console.log(actionElements)
   return (
     <div
       ref={innerRef}
@@ -216,9 +239,17 @@ function Card({card, colIndex, index, innerRef, isDragging, draggableProps, drag
         draggableProps.style
       )}
     >
-      <FlexWrap style="space-around">
+      <FlexWrap 
+      style={{
+        justifyContent: "space-around"
+      }}>
         {card.content}
-        {actionElements}
+        {actionElements.map((action, ind) => (
+            <div key={ind}>
+              {action}
+            </div>
+          ))
+        }
       </FlexWrap>
     </div>
   )
