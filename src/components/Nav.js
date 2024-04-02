@@ -38,7 +38,7 @@ function DropPortfolio({folioAnim, changeFolio}) {
 function Interactions(onClicks) {
     return (
         <div className="nav-interactions">
-        {navClicks.map((Clickable, index) => <FlexWrap key={index} children={<Clickable {...onClicks}/>}/>)}
+            {navClicks.map((Clickable, index) => <FlexWrap key={index} children={<Clickable {...onClicks}/>}/>)}
         </div>
     );
 }
@@ -47,12 +47,12 @@ function Navbar() {
     const [folioAnim, setAnim] = useState("");
     return (
         <div>
-        <div className="nav">
-            <Interactions folioAnim={folioAnim} changeFolio={setAnim}/>
-        </div>
+            <div className="nav">
+                <Interactions folioAnim={folioAnim} changeFolio={setAnim}/>
+            </div>
 
-        {/* Portfolio drops down from behind navbar */}
-        <Portfolio anim={folioAnim} dropLength={"60vh"} peekLength={"2vh"}/>
+            {/* Portfolio drops down from behind navbar */}
+            <Portfolio anim={folioAnim} dropLength={"60vh"} peekLength={"2vh"}/>
         </div>
     );
 }
