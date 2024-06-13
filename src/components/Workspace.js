@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import FlexWrap from './components/Styling';
+import FlexWrap from './Styling';
 
 const reorder = (list, startIndex, endIndex) => {
     const result = Array.from(list);
